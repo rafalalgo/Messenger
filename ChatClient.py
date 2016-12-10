@@ -46,116 +46,120 @@ class MyWindow:
         self.userList.grid(column=0, row=0, sticky=tk.N + tk.S + tk.W + tk.E)
 
 
-class MyApp:
+class Client:
     def __init__(self, root, name):
         self.myWindow = MyWindow(root, name)
-        self.myWindow.sendButton.bind("<Button-1>", self.sending)
+        self.myWindow.sendButton.bind("<Button-1>", self.send_data_gui)
         self.myWindow.exitButton.bind("<Button-1>", self.exit)
-        self.myWindow.textBox.bind("<Return>", self.sending)
+        self.myWindow.textBox.bind("<Return>", self.send_data_gui)
+        self.myWindow.root.bind("<Destroy>", self.exit)
         self.name = name
-        self.num_userList = 0
+        self.isEndClient = False
+
+        self.msgRecv = ""
+        self.newMsgRecv = False
+
+        self.userList = []
+        self.userListSize = 0
+        self.newUserList = True
+
+        self.msgSend = ""
+        self.newMsgSend = False
+
         self.lock = Lock()
-        self.should = False
-        self.endClient = False
-        self.nameUsers = []
-        self.message = ""
-        self.update_list()
-        Thread(target=self.run, args=[]).start()
 
-    def sending(self, event):
-        self.should = True
+        Thread(target=self.recv_data_gui, args=[]).start()
 
-    def update_list(self):
-        self.myWindow.userList.delete(0, self.myWindow.userList.size())
-        self.num_userList = 0
-        for item in self.nameUsers:
-            self.myWindow.userList.insert(self.num_userList, item)
-            self.num_userList += 1
+    def send_data_gui(self, event):
+        self.lock.acquire()
+        self.msgSend = self.myWindow.userList.curselection()
+        if len(self.msgSend) == 0:
+            self.msgSend = self.myWindow.userList.get(0) + "#"
+        else:
+            self.msgSend = self.myWindow.userList.get(self.msgSend[0]) + "#"
+        res = self.myWindow.textBox.get("1.0", tk.END)
+        if len(res) <= 1 or res == "\n":
+            tkMessageBox.showerror("Error", "Nie podales wiadomosci do wyslania.")
+            self.textBox.delete("1.0", tk.END)
+            self.newMsgSend = False
+        else:
+            self.msgSend += res
+            self.myWindow.textBox.delete("1.0", tk.END)
+            self.newMsgSend = True
+        self.lock.release()
 
-    def exit(self, event):
-        global client_socket
-        self.should = True
-        self.endClient = True
-        client_socket.send("LOGOUT")
-        client_socket.close()
-        self.myWindow.root.destroy()
-        sys.exit()
-
-    def run(self):
+    def recv_data_gui(self):
         while 1:
-            print(3)
-            if self.endClient:
+            if self.isEndClient:
                 break
-            if len(self.message) > 1:
+            if self.newMsgRecv:
                 self.lock.acquire()
                 self.myWindow.chatBox.config(state="normal")
-                self.myWindow.chatBox.insert(tk.INSERT, self.message)
+                self.myWindow.chatBox.insert(tk.INSERT, self.msgRecv)
                 self.myWindow.chatBox.config(state=tk.DISABLED)
-                self.message = ""
+                self.msgRecv = ""
+                self.newMsgRecv = False
                 self.lock.release()
+            if self.newUserList:
+                self.myWindow.userList.delete(0, self.myWindow.userList.size())
+                self.userListSize = 0
+                for item in self.userList:
+                    self.myWindow.userList.insert(self.userListSize, item)
+                    self.userListSize += 1
+                self.newUserList = False
 
-    def send_data(self, client):
+    def send_data_thread(self, client):
         while True:
-            print(1)
-            if self.endClient:
+            if self.isEndClient:
                 return
-            if self.should:
-                data = self.myWindow.userList.curselection()
-                if len(data) == 0:
-                    data = self.myWindow.userList.get(0) + "#"
-                else:
-                    data = self.myWindow.userList.get(data[0]) + "#"
-                res = self.myWindow.textBox.get("1.0", tk.END)
-                print("\t\t" + res)
-                if len(res) <= 1:
-                    tkMessageBox.showerror("Error", "Nie podales wiadomosci do wyslania.")
-                    self.textBox.delete("1.0", tk.END)
-                    self.should = 0
-                    continue
-                data += res
-                self.myWindow.textBox.delete("1.0", tk.END)
-                client.send(data)
-                if self.send_data == "LOGOUT":
+            if self.newMsgSend:
+                client.send(self.msgSend)
+                if self.send_data_thread == "LOGOUT":
                     self.lock.acquire()
-                    self.endClient = True
+                    self.isEndClient = True
                     client.close()
                     self.lock.release()
                     break
-                self.should = False
+                self.newMsgSend = False
 
-    def recv_data(self, client):
+    def recv_data_thread(self, client):
         while True:
-            print(2)
-            if self.endClient:
+            if self.isEndClient:
                 return
             try:
-                data = client.recv(buforSize)
+                self.msgRecv = client.recv(buforSize)
             except:
                 self.lock.acquire()
-                self.endClient = True
+                self.isEndClient = True
                 self.lock.release()
                 break
-            if not data:
+            if not self.msgRecv:
                 self.lock.acquire()
-                self.endClient = True
+                self.isEndClient = True
                 self.lock.release()
                 break
-            if data[0:4] == "LIST":
-                data = data[9:]
+            if self.msgRecv[0:4] == "LIST":
                 self.lock.acquire()
-                self.nameUsers = data.split('#')
-                self.nameUsers = filter(lambda a: a != '#' and a != '', self.nameUsers)
-                self.update_list()
+                self.userList = self.msgRecv[9:].split('#')
+                self.userList = filter(lambda a: a != '#' and a != '', self.userList)
+                self.newMsgRecv = False
+                self.newUserList = True
                 self.lock.release()
-            elif data[0:3] == "MSG":
+            elif self.msgRecv[0:3] == "MSG":
                 self.lock.acquire()
-                data = data[3:]
-                temp = data.split('#')
-                temp = filter(lambda a: a != '#' and a != '', temp)
-                self.message = temp[0] + " ==> " + temp[1] + ":\n"
-                self.message += temp[2]
+                self.msgRecv = filter(lambda a: a != '#' and a != '', self.msgRecv[3:].split('#'))
+                self.msgRecv = self.msgRecv[0] + " ==> " + self.msgRecv[1] + ":\n" + self.msgRecv[2]
+                self.newUserList = False
+                self.newMsgRecv = True
                 self.lock.release()
 
+    def exit(self, event):
+        global client_socket
+        self.newMsgSend = True
+        self.isEndClient = True
+        client_socket.send("LOGOUT")
+        client_socket.close()
+        sys.exit()
 
 host = 'localhost'
 port = 44000
@@ -172,9 +176,9 @@ if response == "0":
     print("ERROR. TRY AGAIN.")
 if response == "1":
     rootR = tk.Tk()
-    myapp = MyApp(rootR, nameN)
-    recv_thread = Thread(target=myapp.recv_data, args=(client_socket,))
+    c = Client(rootR, nameN)
+    recv_thread = Thread(target=c.recv_data_thread, args=(client_socket,))
     recv_thread.start()
-    send_thread = Thread(target=myapp.send_data, args=(client_socket,))
+    send_thread = Thread(target=c.send_data_thread, args=(client_socket,))
     send_thread.start()
     rootR.mainloop()
