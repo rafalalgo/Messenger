@@ -1,8 +1,7 @@
 import socket
 from threading import Thread, Lock
 
-global clientList
-clientList = []
+buforSize = 2048
 
 
 class Client(object):
@@ -20,92 +19,92 @@ class Client(object):
         self.conn.close()
 
 
-def get_client(name):
-    for client in clientList:
-        if client.name == name:
-            return client
-    return None
+class Server(object):
+    def __init__(self):
+        self.host = 'localhost'
+        self.port = 44000
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.lock = Lock()
+
+        while True:
+            try:
+                self.server_socket.bind((self.host, self.port))
+            except socket.error:
+                self.port += 1
+            else:
+                break
+
+        self.server_socket.listen(10)
+        self.userList = []
+        print("Server is run on port " + str(self.port))
+
+    def get_client(self, name):
+        for client in self.userList:
+            if client.name == name:
+                return client
+        return None
+
+    def send_to_one(self, data, name, lock):
+        lock.acquire()
+        self.get_client(name).send(data)
+        lock.release()
+
+    def send_to_all(self, data, lock):
+        lock.acquire()
+        for cl in self.userList:
+            cl.send(data)
+        lock.release()
+
+    def handle_client(self, client, lock):
+        while True:
+            data = client.recv()
+            if not data:
+                self.userList.remove(client)
+                break
+            if data == "LOGOUT":
+                print("LOGOUT: " + client.name)
+                self.userList.remove(client)
+                response = "LIST_USER#ALL#"
+                for item in self.userList:
+                    response += item.name + "#"
+                self.send_to_all(data=response, lock=lock)
+                break
+            elif data[0:3] == "ALL":
+                response = "MSG#" + client.name + "#" + data
+                self.send_to_all(data=response, lock=lock)
+            else:
+                response = "MSG#" + client.name + "#" + data
+                pos = 0
+                while data[pos] != "#":
+                    pos += 1
+                self.send_to_one(data=response, name=data[0:pos], lock=lock)
+        lock.acquire()
+        client.close()
+        lock.release()
 
 
-def send_to_one(data, name, lock):
-    lock.acquire()
-    print(name)
-    get_client(name).send(data)
-    lock.release()
-
-
-def send_to_all(data, lock):
-    lock.acquire()
-    for cl in clientList:
-        cl.send(data)
-    lock.release()
-
-
-def handle_client(client, lock):
-    while True:
-        data = client.recv()
-        if not data:
-            clientList.remove(client)
-            break
-        if data == "LOGOUT":
-            print("LOGOUT: " + client.name)
-            clientList.remove(client)
-            response = "LIST_USER#ALL#"
-            for item in clientList:
-                response += item.name + "#"
-            send_to_all(data=response, lock=lock)
-            break
-        elif data[0:3] == "ALL":
-            response = "MSG#" + client.name + "#" + data
-            send_to_all(data=response, lock=lock)
-        else:
-            response = "MSG#" + client.name + "#" + data
-            pos = 0
-            while data[pos] != "#":
-                pos += 1
-            send_to_one(data=response, name=data[0:pos], lock=lock)
-    lock.acquire()
-    client.close()
-    lock.release()
-
-
-def handle_server(serverSocket, lock):
+def handle_server(server, serverSocket, lock):
     while True:
         conn, addr = serverSocket.accept()
         name = conn.recv(buforSize)
-        client = get_client(name)
+        client = server.get_client(name)
         if client:
             conn.send(b'0')
             conn.close()
         else:
             conn.send(b'1')
             client = Client(conn, name)
-            clientList.append(client)
+            server.userList.append(client)
             lock.acquire()
             print("LOGIN: " + client.name)
             response = "LIST_USER#ALL#"
-            for item in clientList:
+            for item in server.userList:
                 response += item.name + "#"
             lock.release()
-            send_to_all(response, lock)
-            Thread(target=handle_client, args=(client, lock)).start()
+            server.send_to_all(response, lock)
+            Thread(target=server.handle_client, args=(client, lock)).start()
 
 
-host = 'localhost'
-port = 44000
-buforSize = 2048
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-while True:
-    try:
-        server_socket.bind((host, port))
-    except socket.error:
-        port += 1
-    else:
-        break
-
-server_socket.listen(10)
-print("Server is run on port " + str(port))
-lock_lock = Lock()
-handle_server(server_socket, lock_lock)
+serwer = Server()
+handle_server(serwer, serwer.server_socket, serwer.lock)

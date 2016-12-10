@@ -12,30 +12,29 @@ class MyWindow:
         self.root.title("Chat: " + self.name)
         self.root.minsize(600, 400)
         self.root.rowconfigure(0, weight=1)
-        self.root.columnconfigure(0, weight=2)
+        self.root.columnconfigure(0, weight=3)
         self.root.columnconfigure(1, weight=1)
 
         self.chatFrame = tk.Frame(self.root)
         self.chatFrame.grid(column=0, row=0, sticky=tk.N + tk.S + tk.W + tk.E)
-        self.chatFrame.rowconfigure(0, weight=3)
+        self.chatFrame.rowconfigure(0, weight=5)
         self.chatFrame.rowconfigure(1, weight=2)
         self.chatFrame.rowconfigure(2, weight=1)
         self.chatFrame.columnconfigure(0, weight=1)
 
         self.userListFrame = tk.Frame(self.root)
         self.userListFrame.grid(column=1, row=0, sticky=tk.N + tk.S + tk.W + tk.E)
-        self.userListFrame.rowconfigure(0, weight=5)
+        self.userListFrame.rowconfigure(0, weight=7)
         self.userListFrame.rowconfigure(1, weight=1)
         self.userListFrame.columnconfigure(0, weight=1)
 
-        self.sendButton = tk.Button(self.chatFrame, text="Send Message")
+        self.sendButton = tk.Button(self.chatFrame, height=1, text="Send Message")
         self.sendButton.grid(column=0, row=2, sticky=tk.N + tk.S + tk.W + tk.E)
 
-        self.exitButton = tk.Button(self.userListFrame, text="Exit")
+        self.exitButton = tk.Button(self.userListFrame, height=1, text="Exit")
         self.exitButton.grid(column=0, row=1, sticky=tk.N + tk.S + tk.W + tk.E)
 
         self.textBox = tk.Text(self.chatFrame, height=0, width=0)
-        self.textBox.grid(column=0, row=1, sticky=tk.N + tk.S + tk.W + tk.E)
         self.textBox.grid(column=0, row=1, sticky=tk.N + tk.S + tk.W + tk.E)
 
         self.chatBox = tk.Text(self.chatFrame, height=0, width=0)
@@ -52,7 +51,7 @@ class Client:
         self.myWindow.sendButton.bind("<Button-1>", self.send_data_gui)
         self.myWindow.exitButton.bind("<Button-1>", self.exit)
         self.myWindow.textBox.bind("<Return>", self.send_data_gui)
-        self.myWindow.root.bind("<Destroy>", self.exit)
+        self.myWindow.chatFrame.bind("<Destroy>", self.exit)
         self.name = name
         self.isEndClient = False
 
@@ -72,19 +71,20 @@ class Client:
 
     def send_data_gui(self, event):
         self.lock.acquire()
+
         self.msgSend = self.myWindow.userList.curselection()
         if len(self.msgSend) == 0:
             self.msgSend = self.myWindow.userList.get(0) + "#"
         else:
             self.msgSend = self.myWindow.userList.get(self.msgSend[0]) + "#"
         res = self.myWindow.textBox.get("1.0", tk.END)
-        if len(res) <= 1 or res == "\n":
-            tkMessageBox.showerror("Error", "Nie podales wiadomosci do wyslania.")
-            self.textBox.delete("1.0", tk.END)
+        if len(res) <= 2:
+            self.myWindow.textBox.delete("1.0", tk.END)
             self.newMsgSend = False
+            tkMessageBox.showinfo("Error", "Nie podales wiadomosci do wyslania.")
         else:
             self.msgSend += res
-            self.myWindow.textBox.delete("1.0", tk.END)
+            self.myWindow.textBox.delete("0.0", tk.END)
             self.newMsgSend = True
         self.lock.release()
 
@@ -160,6 +160,7 @@ class Client:
         client_socket.send("LOGOUT")
         client_socket.close()
         sys.exit()
+
 
 host = 'localhost'
 port = 44000
