@@ -116,9 +116,7 @@ def start_server():
             break
 
     server_socket.listen(10)
-    print("*****************************************")
-    print("TCP/IP chat server listening on port " + str(port))
-    print("*****************************************")
+    print("Server is run on port " + str(port))
     lock = Lock()
     handle_server(server_socket, lock)
 

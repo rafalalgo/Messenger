@@ -1,10 +1,12 @@
 import tkMessageBox
 from threading import Thread, Lock
 import socket
+import sys
 import Tkinter as tk
 
 global name, host, port, buforSize, endClient, users, temp, lock, client_socket
 global should, myapp, ok, message
+global sendThread, recvThread
 
 host = 'localhost'
 port = 44000
@@ -12,7 +14,7 @@ buforSize = 2048
 endClient = False
 users = []
 temp = []
-should = 0
+should = False
 myapp = None
 message = ""
 
@@ -20,6 +22,9 @@ message = ""
 def send_data(client):
     global endClient, myapp, name, should
     while True:
+        print(1)
+        if endClient:
+            return
         if should:
             data = myapp.users.curselection()
             if len(data) == 0:
@@ -27,7 +32,7 @@ def send_data(client):
             else:
                 data = myapp.users.get(data[0]) + "#"
             res = myapp.textbox.get("1.0", tk.END)
-
+            print("\t\t" + res)
             if len(res) <= 2:
                 tkMessageBox.showerror("Error", "Nie podales wiadomosci do wyslania.")
                 myapp.textbox.delete("1.0", tk.END)
@@ -42,14 +47,15 @@ def send_data(client):
                 client.close()
                 lock.release()
                 break
-            should = 0
+            should = False
 
 
 def recv_data(client):
     global endClient
     while True:
+        print(2)
         if endClient:
-            break
+            return
         try:
             data = client.recv(buforSize)
         except:
@@ -86,24 +92,24 @@ def start_client():
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     client_socket.connect((host, port))
+
     global name
     name = str(raw_input("Name: "))
     client_socket.send(name)
-    print("BYL")
     response = client_socket.recv(buforSize)
-    print("BYL" + response)
     if response == "0":
         print("ERROR. TRY AGAIN.")
         return
     if response == "1":
-        print("BYL")
         global lock
         lock = Lock()
-        global myapp
+        global myapp, sendThread, recvThread
         root = tk.Tk()
         myapp = MyApp(root)
-        Thread(target=recv_data, args=(client_socket,)).start()
-        Thread(target=send_data, args=(client_socket,)).start()
+        recvThread = Thread(target=recv_data, args=(client_socket,))
+        recvThread.start()
+        sendThread = Thread(target=send_data, args=(client_socket,))
+        sendThread.start()
         root.mainloop()
 
 
@@ -115,6 +121,7 @@ class MyApp:
         self.root.rowconfigure(0, weight=1)
         self.root.columnconfigure(0, weight=2)
         self.root.columnconfigure(1, weight=1)
+
         self.ChatF = tk.Frame(self.root)
         self.ChatF.grid(column=0, row=0, sticky=tk.N + tk.S + tk.W + tk.E)
         self.ChatF.rowconfigure(0, weight=3)
@@ -164,15 +171,21 @@ class MyApp:
             self.num_users += 1
 
     def exit(self, event):
-        global should
-        self.textbox.delete("1.0", tk.END)
-        self.textbox.insert(tk.INSERT, "LOGOUT")
-        should = 1
+        global should, sendThread, recvThread, client_socket
+        should = True
+        global endClient
+        endClient = True
+        client_socket.send("LOGOUT")
+        client_socket.close()
         self.root.destroy()
+        sys.exit()
 
     def run(self):
-        global message
+        global message, endClient
         while 1:
+            print(3)
+            if endClient:
+                break
             if len(message) > 1:
                 lock.acquire()
                 self.chatbox.config(state="normal")
