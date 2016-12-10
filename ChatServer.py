@@ -35,6 +35,7 @@ def get_client(name):
 
 def send_to_one(data, name, lock):
     lock.acquire()
+    print(name)
     get_client(name).send(data)
     lock.release()
 
@@ -51,7 +52,7 @@ def handle_client(client, lock):
         data = client.recv()
         if not data:
             break
-        # print(data)
+        print(data)
         if data == "LOGOUT":
             response = ""
             global user, tab
@@ -69,14 +70,12 @@ def handle_client(client, lock):
         elif data[0:3] == "ALL":
             response = "MSG#" + client.name + "#" + data
             send_to_all(data=response, lock=lock)
-            # print("WYSLALEM TO ALL")
         else:
             response = "MSG#" + client.name + "#" + data
             pos = 0
             while data[pos] != "#":
                 pos += 1
             send_to_one(data=response, name=data[0:pos], lock=lock)
-            # print("WYSLALEM DO JEDNEGO")
     lock.acquire()
     clientList.remove(client)
     client.close()
